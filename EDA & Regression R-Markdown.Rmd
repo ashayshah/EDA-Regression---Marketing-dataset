@@ -1,0 +1,267 @@
+---
+title: "EDA & Regression on Marketing Dataset"
+output:
+  html_document:
+    toc: true
+    self_contained: true
+  github_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+getwd()
+
+```{r Read data, echo=TRUE}
+Ch3_marketing <- read.csv('Ch3_marketing.csv')
+Ch4_marketing <- read.csv('Ch4_marketing.csv')
+```
+
+
+```{r Initialize, echo=TRUE}
+library(data.table)
+mark = copy(Ch3_marketing) #create a data table 'mark' , to avoid working on the original table
+str(mark)
+setDT(mark)
+```
+
+```{r Cleaning, echo=TRUE}
+# Cleaning
+
+
+
+unique(mark$pop_density) #to check the unique values in the only column that is of character datatype
+#we see the output as 'high', 'medium' and 'low'... which means 'pop_density' is a ordinal column. So, we convert it into a factor.
+mark[,pop_density:=factor(pop_density,levels=c('Low','Medium','High'),ordered=T)]
+
+grep('NA',mark)
+#see the output... integer(0) means there are no null values
+
+#the 5 number summary
+summary(mark$google_adwords)
+min(mark$google_adwords) #if you just want the min.
+max(mark$twitter) #if you just want the max.
+
+#the above example was a numerical data column. But we can also use summary() on a categorical column.
+mark[,summary(pop_density)]
+#the output shows we have 68 iterations of value 'Low', 52 iterations of 'Medium' and 52 of 'High'
+```
+```{r EDA, echo=TRUE}
+# EDA
+
+
+
+
+library(ggplot2)
+
+
+
+#let's map the pop_density column (categorical data) on a bar graph
+ggplot(mark,aes(x=pop_density)) + geom_bar()
+
+
+#now lets plot numerical data. lets start with plotting google_adwords on box plot.
+ggplot(mark,aes(x=google_adwords)) + geom_boxplot()
+#our distribution is almost normally distributed.
+
+
+#now plot the same column on a histogram.
+ggplot(mark,aes(x=google_adwords)) + geom_histogram(fill='yellow',color='black',binwidth=50)
+#very few values in the google_adwords column ranging from 0 to 50. And there are more than #
+#35 values (see y-axis) in the google_adwords column that range from 250 to 300.
+
+#our data is skewing towards the max value side
+ggplot(mark,aes(y=twitter)) + geom_boxplot(fill='yellow')
+
+
+ggplot(mark,aes(x=twitter)) + geom_histogram(fill='green',color='black',bins=10)
+#this histogram in the output clearly shows the 'distribution' is uneven.. and towards the right, we see the anomaly outliers around 120 range.
+
+#lets find the relationship between employees and pop_density.. pop_density is categorical column, employees is numerical value column.#
+#lets convert employee into categorical.. so first, cut the employees into 2 groups using cut().
+mark[,empFactor:=cut(employees,2)]
+str(mark)
+
+table(mark$empFactor) #78 values in the range (2.99 to 7.5) , and 94 in (7.5 to 12)
+
+#now we can find the relationship between empFactor and pop_density, as both are categorical now.
+table(mark$empFactor, mark$pop_density)
+
+#companies where the employees are a bit lower (2.99 to 7.5), they are focusing more on the 'Low' population densities (35).#
+# and companies with more employees (7.5 to 12) are focusing equally on low, medium and high population densities (33,31,30)
+
+#now lets compare numerical to numerical.. lets find the relation between google_adwords and revenues. We do this using Scatter Plots.
+ggplot(mark,aes(x=revenues,y=google_adwords)) + geom_point(color='purple')
+#we see a strong correlation in the start, and less strong towards the end.
+
+# calculating the correlation
+mark[,cor(google_adwords,revenues)]
+
+#now, to test whether the correlation is significant, means whether it is due to random chance, or whether it actually is significant, ##
+##we use the cor.test() function to check the significance..
+cor.test(mark$google_adwords,mark$revenues)
+
+# t is 15.5, which is a large number, But p-value is 2.2e-16, which is almost 0.0000002.. which is almost 0.
+# Hence, our alternative hypothesis is correct.. and the correlation is statistically significant,
+
+#lets test the correlation between twitter & revenue columns.
+cor.test(mark$twitter,mark$revenues)
+#the correlation is 0.29... the t-score is 3.6, p-value is 0.003 (which is not very very less as the previous example above). ##
+##The question to ask by seeing this correlation (0.29 is less) is why are they spending money on twitter advertising if revenue's ###
+###relation with twitter is less?
+
+#pairs() function creates a scatterplot of every column against every column in the datatable.
+pairs(mark)
+
+
+
+#---#
+```
+
+```{r Regression, echo=TRUE}
+advert = copy(Ch4_marketing)
+setDT(advert)
+str(advert)
+
+
+#say we want to compare the distributions of 3 columns : google, twitter and facebook
+#First lets create a vector with all the data from the 3 columns:
+g=advert[,google_adwords]
+f=advert[,facebook]
+tw=advert[,twitter]
+nv=c(g,f,tw)
+nv
+#basically we created vector nv, with data of all 3 columns stacked one below the other in it.
+
+#Now we need to create a vector that labels each piece of data according to what column belongs to (our categorical data):
+nc=c(rep('g',NROW(g)),rep('f',NROW(f)),rep('tw',NROW(tw)))
+advert2=data.table(nv ,nc)
+
+ggplot(advert2, aes(x=nc ,y=nv)) + geom_boxplot (fill='pink')
+#the plot shows google is more expensive. There are 2 outlier prices in twitter marketing.
+```
+
+```{r Simple Regression, echo=TRUE}
+#regression
+
+
+
+
+model1=lm(revenues~marketing_total , data = advert)
+#we made a model where the marketing total predicts revenue
+model1
+
+#the 32.0067 in y-intercept, means that if you dont spend any money on marketing (basically X is zero dollars),
+#then we can say the revenue would be $32007 (unit of the data in thousands)..
+#also, revenue increases by $51.93 (slope) for every $1000 increase in total marketing
+
+#so by using this data,this is how we can make a prediction model :
+#Revenue = 32.0067 + (0.05193 * marketing_total)
+
+# L.I.N.E assumptions must be satisfied by the data, in order to use linear regression.
+#To find whether the 'N' , i.e. normal distribution of residuals is satisfied by the data, we run these series of tests :-
+# Z-score is calculated by subtracting each data point in the column by it's mean, and dividing that number by the SD of that column.
+
+
+str(model1)
+model1$residuals #to find the residual values of our model
+
+#now, to plot the Q-Q plot, we need the residuals in a data table, and the Z-scores are calculated by ggplot() itself...
+resdf = data.table('res'=model1$residuals) #data table 'resdf' with column 'res' which basically are our residuals
+
+#first lets plot the histogram plot of residuals
+ggplot(resdf ,aes(x=res)) + geom_histogram(bins=10,fill='purple',color='black')
+#the shape looks like normal distribution, because majority residual values are near 0.
+
+#and now we can check the mean
+mean(model1$residuals)
+#the value is 4.05832 * e ^ -17, in the console... which basically is : 0.000000000000000000040583... which is essentially zero.
+
+#now, let's also plot the Q-Q plot
+ggplot(resdf ,aes(sample=res)) + stat_qq(color='blue') + stat_qq_line()
+#We see that majority of the points lie on the straight line, and are clustered in the center... so we can say it is normally distributed with ##
+# mean 0.
+
+#To find whether the 'E' (equal variance) of residuals is satisfied by the data, we have to show that there is no pattern between to the residual errors.
+
+#just like residuals, predicted Y values are in 'model1' which we created. We can add a 'pred' column in the resdf table, to plot it further.
+resdf[,pred:= model1$fitted.values]
+
+ggplot(resdf ,aes(x=pred ,y=res)) + geom_point(color='purple') + geom_smooth(method='lm')
+#there is a horizontal line in the output, and it means, as the predicted Y values increase or decrease, it has zero effects on the residuals.
+# which shows there is no relationship between the 2 variables.
+```
+
+```{r Predictions, echo=TRUE}
+#PREDICTING OUTPUTS
+
+
+#if you predict outputs using SLR, it works best if you use the inputs within the range of the existing data. Eg:
+summary(advert$marketing_total)
+#so, predicted output (revenue) will be best if it is in the range of values [53.65 to 481] of the marketing_total data (input variable)
+
+#Problem: predict the revenues if you spend $460,000 in marketing.
+#firstly, we should check there are how many data points more than 460 in the marketing column
+advert[marketing_total >460, marketing_total]
+#only 1 value... i.e. 481
+
+#we can create 3 values, 460, 465 and 470 as inputs.
+##we create a data table with these inputs, and then use the 'predict.lm()' function to estimate the outputs.
+newrev = data.table(marketing_total=seq (460 ,470 ,5))
+predict.lm(model1 ,newrev ,interval = 'predict')
+#we in parameters, pass the regression model (model1), the table which we want as input, and interval = 'predict' says we want to predict
+# based on the model and table passed.
+
+#For the value of $460,000 you get an estimate of revenue of $55,894.
+
+
+#now, let's sample a smaller table 'liladvert' from our main data table 'advert', using the sample() function
+liladvert = advert[sample (.N,.3*.N)]
+
+#now, let's go ahead and create the same regression model using lm() function, but now on the 'liladvert' table.
+set.seed (4510)
+liladvert = advert[sample (.N,.3*.N)]
+samp_model = lm(revenues~marketing_total ,data=liladvert)
+samp_model
+
+```
+
+
+
+```{r Outputs, echo=TRUE}
+#Multiple regression:
+
+
+
+
+model2 = lm(revenues ~ google_adwords + facebook + twitter , data=advert)
+
+#create a new data table to put the residuals and predicted values in the table in order to plot graphs
+resdf2 = data.table(res = model2$residuals, pred = model2$fitted.values)
+
+plot(advert) #we do this to check individual variables plot against revenue variable to check linearity
+
+#test normality
+ggplot(resdf2 ,aes(x=res)) + geom_histogram(bins=10,fill='blue',color='white')
+ggplot(resdf2 ,aes(sample=res)) + stat_qq(color="blue") + stat_qq_line()
+
+#test equal variance
+ggplot(resdf2 ,aes(x=pred ,y=res)) + geom_point(color='purple') + geom_smooth(method = 'lm')
+
+summary(model2)
+#we see that twitter isn't statistically significant and isnt contributing a lot to the rev, as it's p-value is > 0.05
+```
+
+
+
+
+
+
